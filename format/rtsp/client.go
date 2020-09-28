@@ -86,14 +86,22 @@ type Response struct {
 	Block []byte
 }
 
-func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
-	var URL *url.URL
-	if URL, err = url.Parse(uri); err != nil {
+func parseUri(uri string) (u *url.URL, err error) {
+	if u, err = url.Parse(uri); err != nil {
 		return
 	}
+	_, _, err = net.SplitHostPort(u.Host)
+	if err != nil {
+		u.Host = u.Host + ":554"
+	}
+	return
 
-	if _, _, err := net.SplitHostPort(URL.Host); err != nil {
-		URL.Host = URL.Host + ":554"
+}
+
+func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
+	var URL *url.URL
+	if URL, err = parseUri(uri); err != nil {
+		return
 	}
 
 	dailer := net.Dialer{Timeout: timeout}
@@ -121,6 +129,26 @@ func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
 
 func Dial(uri string) (self *Client, err error) {
 	return DialTimeout(uri, 0)
+}
+
+func DialWithConn(uri string, conn net.Conn) (self *Client, err error) {
+	var URL *url.URL
+	if URL, err = parseUri(uri); err != nil {
+		return
+	}
+	u2 := *URL
+	u2.User = nil
+	connt := &connWithTimeout{Conn: conn}
+	self = &Client{
+		conn:            connt,
+		brconn:          bufio.NewReaderSize(connt, 256),
+		url:             URL,
+		requestUri:      u2.String(),
+		DebugRtp:        DebugRtp,
+		DebugRtsp:       DebugRtsp,
+		SkipErrRtpBlock: SkipErrRtpBlock,
+	}
+	return
 }
 
 func (self *Client) allCodecDataReady() bool {
